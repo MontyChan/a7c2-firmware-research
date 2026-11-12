@@ -142,9 +142,13 @@ concept, imaging model, and license state rather than from an ordinary menu
 setting.
 
 The BKID model contains separate entries for the generic file format, DCI 4K
-frame rate, and DCI 4K 24p record-setting families. No ordinary
-`BKID_APP_LICENSE_*` property name was found, which suggests that license
-capability is supplied by product-capability logic during initialization.
+frame rate, and DCI 4K 24p record-setting families. The firmware also defines
+ten application license slots (`BKID_APP_LICENSE_TYPE0` through
+`BKID_APP_LICENSE_TYPE9`) and ten corresponding expired-license status slots.
+This confirms that license data has a persistent representation in the
+application model. It does not identify which slot, if any, carries the DCI 4K
+24p entitlement, or prove that an entitlement can be changed without
+Sony-signed license data.
 
 ## 5. 24p Transition and Reboot Logic
 
