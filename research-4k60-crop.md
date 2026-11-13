@@ -86,9 +86,9 @@ at 60 fps is supported.
 
 The application imports and calls the normal movie-parameter interface
 `SetMovieRecParam`. No separate APSC-mode setter is exported by appFw. The
-4K60 application path therefore reaches a compound movie-parameter operation;
-the exact CP crop/readout command selected downstream has not yet been
-reconstructed.
+verified callers construct a compound movie-parameter object. The exact link
+from each 4K60 codec/profile branch to these callers, and the downstream CP
+crop/readout command, have not yet been reconstructed.
 
 ### Call-site findings from the 2026-11-13 capture
 
@@ -96,18 +96,32 @@ The retained read-only capture is `a7c2-service-readonly/20261113-075519`.
 Its inventory identifies ILCE-7CM2 and firmware assumption 2.01; `appFw.so`
 is AArch64 ELF64 ET_DYN. In this image the import is the mangled C++ symbol
 `mpr::SetMovieRecParam(mpr::movieRecParam const&)`, resolved through the PLT
-entry at `0x16604b0`. There is one direct appFw call site at `0x356afc8`.
+entry at `0x16604c0`. There are two direct appFw call sites at `0x3575258`
+and `0x35754d8`.
 
-At that site, the caller copies three 8-byte words from a candidate record
-into a stack object at `x29 + 0x90`, passes its address in `x0`, then calls
-`SetMovieRecParam`. The object is therefore 24 bytes at this call boundary,
-but its fields have not been identified. The caller iterates candidate records
-and invokes helper predicates before selecting the record. The helper call at
-`0x356af98` is followed by the 24-byte copy and the `SetMovieRecParam` call;
-the helper is reached through the imported PLT entry at `0x165d4d0`. This
-establishes a conditional path to a movie-parameter submission, not that any
-particular HAITA result changes the frame area. No frame-size, sensor-rate,
-codec, or readout field offset has been proven.
+The earlier address `0x356afc8` is not a movie-parameter call: its target
+`0x16604b0` resolves to `sidb::EquivalenceValue<unsigned int>`. It is part of
+a candidate/value check and must not be used as the movie request boundary.
+
+At the real call sites, the caller uses `x19` as the address of a larger
+stack-built object at `x29 + 0x300`. The surrounding function clears and
+initializes approximately `0x1d8` bytes before calling `SetMovieRecParam`, so
+the input is a compound structure of at least that size, not a 24-byte object.
+The exact fields are still being reconstructed. The caller includes multiple
+mode/profile branches before the call, but no frame-size, sensor-rate, codec,
+or readout field offset has yet been proven.
+
+The corrected call chain has an additional dispatch layer: a handler at
+`0x34d41b0` selects operation ID `0x25` and calls the structure-building
+function at `0x3574174`. The latter receives the caller's two arguments,
+constructs the large movie-record object, and submits it through the two
+`SetMovieRecParam` branches. Operation ID `0x25` is an internal dispatch value;
+it has not been identified as a frame-rate or codec enum.
+
+One nearby helper call at `0x356af98` targets `0x165d4d0`, which resolves to
+`sidb::EquivalenceValue<unsigned short>::operator()(unsigned int)`, so it is
+an enum/value equivalence test. It is not proven to be the HAITA evaluator and
+is not on the corrected `SetMovieRecParam` call boundary.
 
 The three HAITA names in scope are present in the string table. Relocation
 records associate the FF and APS-C restriction names with the adjacent
@@ -212,8 +226,11 @@ The next useful evidence is further offline analysis of the retained capture
    50p/60p.
 2. Trace the rule evaluator and all relevant consumers to determine whether a
    result affects only setting validity or the compound movie request.
-3. Recover the `mpr::movieRecParam` field layout, including image frame size,
-   sensor rate, codec, and any crop/readout selector.
+3. Recover the `mpr::movieRecParam` field layout from the real callers at
+   `0x3575258` and `0x35754d8`, including image frame size, sensor rate, codec,
+   and any crop/readout selector. The object is at least `0x1d8` bytes in
+   those callers; the earlier 24-byte interpretation belonged to a different
+   candidate/value check and must not be used.
 4. Disassemble the CP string xrefs and command handlers, then test whether a
    path from this movie request reaches any APSC/readout operation.
 5. Compare 30p and 50p/60p independently for XAVC HS, XAVC S, and XAVC S-I.
